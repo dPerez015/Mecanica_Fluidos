@@ -43,12 +43,14 @@ namespace ClothMesh {
 glm::vec3 gravity(0,-9.8,0);
 
 struct Wave{
+	bool active;
 	float amplitude;
 	float frequency;
 	glm::vec3 waveVector;
 	float waveLength;
 	float k;
 	Wave(float a, float freq,float length ,glm::vec3 vec){
+		active = true;
 		amplitude = a;
 		frequency = freq;
 		waveLength = length;
@@ -89,9 +91,12 @@ public:
 	//waveControl
 	void DefaultWaves() {
 		waves.clear();
-		Wave wave(0.2f, 4.f, 0.5f, glm::vec3(1, 1, 0));
-		Wave wave2(0.15, 3, 1, glm::vec3(-1, 0, 1));
-		Wave wave3(0.25, 2, 6, glm::vec3(-1.2, 0, -3));
+		Wave wave(0.2f, 2.74f, 6.33f, glm::vec3(1, 1, 0));
+		Wave wave2(0.15, 1.86f, 4.88f, glm::vec3(-1, 0, 1));
+		Wave wave3(0.23, 1.27f, 8.14, glm::vec3(-1.2, 0, -3));
+		std::cout << wave.k << std::endl;
+		std::cout << wave2.k << std::endl;
+		std::cout << wave3.k << std::endl;
 		waves.push_back(wave);
 		waves.push_back(wave2);
 		waves.push_back(wave3);
@@ -108,19 +113,24 @@ public:
 
 	void Update(float& dt) {
 		time += dt;
+		if (time == glm::two_pi<float>())time == 0;
 		float resultSinus;
 		for (int i = 0; i < ClothMesh::numVerts; i++) {
 			//std::cout << waves.size();
 			position[i] = glm::vec3(0);
 			for (int j = 0; j < waves.size(); j++) {
-				waves[j].k= glm::two_pi<float>() / waves[j].waveLength;
-				waves[j].waveVector = glm::normalize(waves[j].waveVector)*waves[j].k;
+				if (waves[j].active) {
+					waves[j].k = glm::two_pi<float>() / waves[j].waveLength;
+					//waves[j].waveVector = glm::normalize(waves[j].waveVector)*waves[j].waveLength;
+					waves[j].waveVector = glm::normalize(waves[j].waveVector)*waves[j].k;
+					//waves[j].waveVector = glm::normalize(waves[j].waveVector);
 
-				resultSinus= waves[j].amplitude*glm::sin(glm::dot(waves[j].waveVector, originalPos[i]) - waves[j].frequency*time);
-				position[i].x += (waves[j].waveVector.x / waves[j].k)*resultSinus;
-				position[i].z +=  (waves[j].waveVector.z / waves[j].k)*resultSinus;
+					resultSinus = waves[j].amplitude*glm::sin(glm::dot(waves[j].waveVector, originalPos[i]) - waves[j].frequency*time);
+					position[i].x += (waves[j].waveVector.x / waves[j].k)*resultSinus;
+					position[i].z += (waves[j].waveVector.z / waves[j].k)*resultSinus;
 
-				position[i].y += (waves[j].amplitude*glm::cos(glm::dot(waves[j].waveVector, originalPos[i]) - waves[j].frequency*time));
+					position[i].y += (waves[j].amplitude*glm::cos(glm::dot(waves[j].waveVector, originalPos[i]) - waves[j].frequency*time));
+				}
 			}
 			position[i].x = originalPos[i].x - position[i].x;
 			position[i].y += heightPos;
@@ -148,8 +158,8 @@ public:
 	FloatingSphere() {
 		radius = 0.5f;
 		InitRandomPos();
-		density = 1;
-		dragCoeficient = 0.47;
+		density = 2;
+		dragCoeficient = 0.27;
 		time = 0;
 		maxTime = 5;
 	}
@@ -165,7 +175,9 @@ public:
 	void findPointHeight(std::vector<Wave>& waves, float originalHeight, float time) {
 		pointHeight = 0;
 		for (int i = 0; i < waves.size(); i++) {
-			pointHeight += (waves[i].amplitude*glm::cos(glm::dot(waves[i].waveVector, glm::vec3(position.x, originalHeight, position.z)) - waves[i].frequency*time));
+			if (waves[i].active) {
+				pointHeight += (waves[i].amplitude*glm::cos(glm::dot(waves[i].waveVector, glm::vec3(position.x, originalHeight, position.z)) - waves[i].frequency*time));
+			}
 		}
 		pointHeight += originalHeight;
 	}
@@ -222,10 +234,10 @@ public:
 	}
 	void findCrossSection() {
 		if (use2Hemi) {
-			crossSectionArea = glm::pi<float>()*radius;
+			crossSectionArea = glm::pi<float>()*pow(radius,2);
 		}
 		else {
-			crossSectionArea = glm::pi<float>()*a;
+			crossSectionArea = glm::pi<float>()*pow(a,2);
 		}
 		
 	}
@@ -241,8 +253,8 @@ public:
 			InitRandomPos();
 			time -= maxTime;
 		}
-		totalVolume = glm::pi<float>()*glm::pow(radius, 3);
-		mass = density*(4.f / 3.f)*totalVolume;
+		totalVolume = glm::pi<float>()*(4.f / 3.f)*glm::pow(radius, 3);
+		mass = density*totalVolume;
 		force = gravity*mass;
 		findPointHeight(theMesh.waves, theMesh.heightPos, theMesh.time);
 		findH();
@@ -314,14 +326,17 @@ void GUI() {
 				for (int i = 0; i < mesh.waves.size(); i++) {
 					name = "Wave " + std::to_string(i);
 					if (ImGui::CollapsingHeader(name.c_str())) {
+						name = "Wave " + std::to_string(i) + " Active";
+						ImGui::Checkbox(name.c_str(), &mesh.waves[i].active);
 						name = "Wave " + std::to_string(i) + " Amplitude";
 						ImGui::DragFloat(name.c_str(), &mesh.waves[i].amplitude, 0.01, 0, 10);
 						name = "Wave " + std::to_string(i) + " Frequency";
 						ImGui::DragFloat(name.c_str(), &mesh.waves[i].frequency, 0.01, 0, 10);
 						name = "Wave " + std::to_string(i) + " Length";
-						ImGui::DragFloat(name.c_str(), &mesh.waves[i].waveLength, 0.01, 0, 10);
+						ImGui::DragFloat(name.c_str(), &mesh.waves[i].waveLength, 0.01, 0.01, 10);
 						name = "Wave " + std::to_string(i) + " Direction";
 						ImGui::DragFloat3("Wave Direction", &mesh.waves[i].waveVector.x, 0.1, -10, 10);
+						
 					}
 				}
 			}
